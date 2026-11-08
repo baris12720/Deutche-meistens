@@ -25,30 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Proje klasorunu hazirla (zip varsa ac)
-        run: |
-          set -e
-          if [ -f package.json ]; then
-            PROJECT_DIR=.
-            echo "Proje dosyalari depo kokunde bulundu."
-          else
-            ZIP=$(ls -t ./*.zip 2>/dev/null | head -n1 || true)
-            if [ -z "$ZIP" ]; then
-              echo "::error::Depoda ne package.json ne de .zip dosyasi var. Proje zip'ini depoya yukleyin."
-              exit 1
-            fi
-            echo "Zip aciliyor: $ZIP"
-            mkdir -p _project
-            unzip -q -o "$ZIP" -d _project
-            PKG=$(find _project -maxdepth 3 -name package.json -not -path "*/node_modules/*" -not -path "*/__MACOSX/*" | head -n1)
-            if [ -z "$PKG" ]; then
-              echo "::error::Zip icinde package.json bulunamadi."
-              exit 1
-            fi
-            PROJECT_DIR=$(dirname "$PKG")
-          fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Proje klasoru: $PROJECT_DIR"
-
+        run: | set -e if [ -f package.json ]; then PROJECT_DIR=. echo "Proje dosyalari depo kokunde bulundu." else ZIP=$(ls -t ./*.zip 2>/dev/null | head -n1 || true) if [ -z "$ZIP" ]; then echo "::error::Depoda ne package.json ne de .zip dosyasi var. Proje zip'ini depoya yukleyin." exit 1 fi echo "Zip aciliyor: $ZIP" mkdir -p _project unzip -q -o "$ZIP" -d _project PKG=$(find _project -maxdepth 3 -name package.json -not -path "*/node_modules/*" -not -path "*/__MACOSX/*" | head -n1) if [ -z "$PKG" ]; then echo "::error::Zip icinde package.json bulunamadi." exit 1 fi PROJECT_DIR=$(dirname "$PKG") fi echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV" echo "Proje klasoru: $PROJECT_DIR" 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -60,30 +37,14 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
+      - name: Android lisanslarini kabul et (SDK runner'da hazir gelir)
+        run: | echo "ANDROID_HOME=$ANDROID_HOME" yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true 
       - name: Install dependencies
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          npm install --legacy-peer-deps --no-audit --no-fund
-          npm install --legacy-peer-deps --no-audit --no-fund @capacitor/core@7 @capacitor/android@7
-          npm install --legacy-peer-deps --no-audit --no-fund --save-dev @capacitor/cli@7
-
+        run: | npm install --legacy-peer-deps --no-audit --no-fund npm install --legacy-peer-deps --no-audit --no-fund @capacitor/core@7 @capacitor/android@7 npm install --legacy-peer-deps --no-audit --no-fund --save-dev @capacitor/cli@7 
       - name: Capacitor ayar dosyasi (yoksa olustur)
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ]; then
-            cat > capacitor.config.json <<'JSON'
-          {
-            "appId": "com.deutschmeister.app",
-            "appName": "Deutsch Meister",
-            "webDir": "dist",
-            "server": { "androidScheme": "https" }
-          }
-          JSON
-          fi
-
+        run: | if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ]; then cat > capacitor.config.json <<'JSON' { "appId": "com.deutschmeister.app", "appName": "Deutsch Meister", "webDir": "dist", "server": { "androidScheme": "https" } } JSON fi 
       - name: Web uygulamasini derle
         working-directory: ${{ env.PROJECT_DIR }}
         env:
@@ -92,41 +53,19 @@ jobs:
 
       - name: Android projesi ekle
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ ! -d android ]; then npx cap add android; fi
-
+        run: | if [ ! -d android ]; then npx cap add android; fi 
       - name: Uygulama ikonu olustur (basarisiz olursa varsayilan ikon kalir)
         continue-on-error: true
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ -f public/pwa-512x512.png ]; then
-            mkdir -p assets
-            convert public/pwa-512x512.png -resize 1024x1024 assets/icon-only.png
-            cp assets/icon-only.png assets/icon-foreground.png
-            convert -size 1024x1024 xc:'#22c55e' assets/icon-background.png
-            npx --yes @capacitor/assets generate --android --iconBackgroundColor '#22c55e' --iconBackgroundColorDark '#22c55e'
-          fi
-
+        run: | if [ -f public/pwa-512x512.png ]; then mkdir -p assets convert public/pwa-512x512.png -resize 1024x1024 assets/icon-only.png cp assets/icon-only.png assets/icon-foreground.png convert -size 1024x1024 xc:'#22c55e' assets/icon-background.png npx --yes @capacitor/assets generate --android --iconBackgroundColor '#22c55e' --iconBackgroundColorDark '#22c55e' fi 
       - name: Capacitor sync ve surum numarasi
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          npx cap sync android
-          GRADLE=android/app/build.gradle
-          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" "$GRADLE"
-          sed -i "s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" "$GRADLE"
-
+        run: | npx cap sync android GRADLE=android/app/build.gradle sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" "$GRADLE" sed -i "s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" "$GRADLE" 
       - name: APK olustur (debug, telefona dogrudan kurulabilir)
         working-directory: ${{ env.PROJECT_DIR }}/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
+        run: | chmod +x gradlew ./gradlew assembleDebug --no-daemon 
       - name: APK dosyasini adlandir
-        run: |
-          mkdir -p out
-          cp "${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk" "out/deutsch-meister-${{ github.run_number }}.apk"
-          ls -la out
-
+        run: | mkdir -p out cp "${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk" "out/deutsch-meister-${{ github.run_number }}.apk" ls -la out 
       - name: Artifact olarak yukle
         uses: actions/upload-artifact@v4
         with:
