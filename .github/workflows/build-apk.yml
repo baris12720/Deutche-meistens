@@ -1,4 +1,4 @@
-name: Build Android APK
+name: APK Olustur (v2)
 
 # Calisma sekli:
 # - Depoda proje dosyalari varsa (package.json kokte) dogrudan onlari kullanir.
